@@ -1,0 +1,57 @@
+{
+  "name": "prisma-strong-migrations",
+  "version": "0.0.1",
+  "description": "A linter for Prisma migrations to ensure safe SQL deployments",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "prisma-strong-migrations": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint src/**/*.ts",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "prisma",
+    "migrations",
+    "sql",
+    "linter",
+    "database",
+    "safety",
+    "ci-cd"
+  ],
+  "author": "Miles Zimmerman <miles@zim.dev>",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^9.4.1",
+    "cosmiconfig": "^8.0.0",
+    "glob": "^8.0.3",
+    "sql-parser-cst": "^0.24.0",
+    "yaml": "^2.2.1"
+  },
+  "devDependencies": {
+    "@types/glob": "^8.1.0",
+    "@types/jest": "^29.4.0",
+    "@types/node": "^18.14.2",
+    "@typescript-eslint/eslint-plugin": "^5.53.0",
+    "@typescript-eslint/parser": "^5.53.0",
+    "eslint": "^8.34.0",
+    "jest": "^29.4.3",
+    "prettier": "^2.8.4",
+    "ts-jest": "^29.0.5",
+    "typescript": "^4.9.5"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
