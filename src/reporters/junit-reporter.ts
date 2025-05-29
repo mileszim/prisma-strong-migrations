@@ -1,4 +1,4 @@
-import { LintResult, Severity } from '../types';
+import { LintResult, Severity, Violation } from '../types';
 import { Reporter } from './index';
 
 export class JunitReporter implements Reporter {
@@ -32,7 +32,7 @@ ${testCases.join('\n')}
   </testsuite>`;
   }
 
-  private generateTestCase(violation: any, isFailure: boolean): string {
+  private generateTestCase(violation: Violation, isFailure: boolean): string {
     const testName = `${violation.ruleId} at line ${violation.line}`;
     const className = violation.category || 'migration-lint';
     

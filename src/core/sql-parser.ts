@@ -54,7 +54,7 @@ export class SQLParser {
           ast
         };
         statements.push(statement);
-      } catch (error) {
+      } catch (_error) {
         // If parsing fails, still create a statement for linting
         const statement: SQLStatement = {
           type: this.getStatementType(sqlContent),

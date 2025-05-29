@@ -37,7 +37,6 @@ describe('Prisma Strong Migrations Linter', () => {
       }]
     };
 
-    const violations = await linter.getConfig().getConfig();
     const rule = linter.getAllRules().find(r => r.id === 'no-drop-table');
     
     expect(rule).toBeDefined();

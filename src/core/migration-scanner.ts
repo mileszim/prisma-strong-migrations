@@ -38,7 +38,7 @@ export class MigrationScanner {
     // Default Prisma migration pattern
     const defaultPattern = path.join(migrationsPath, '**', 'migration.sql');
     
-    let patterns = include?.length ? include.map(pattern => path.join(migrationsPath, pattern)) : [defaultPattern];
+    const patterns = include?.length ? include.map(pattern => path.join(migrationsPath, pattern)) : [defaultPattern];
     
     const files: string[] = [];
     for (const pattern of patterns) {
@@ -56,7 +56,7 @@ export class MigrationScanner {
           : matchedFiles;
           
         files.push(...filteredFiles);
-      } catch (error) {
+      } catch (_error) {
         // Skip patterns that don't match anything
         continue;
       }

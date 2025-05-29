@@ -1,4 +1,4 @@
-import { Migration, LintResult, Rule } from '../types';
+import { LintResult, Rule } from '../types';
 import { MigrationScanner } from './migration-scanner';
 import { RuleEngine } from './rule-engine';
 import { ConfigManager } from './config';
