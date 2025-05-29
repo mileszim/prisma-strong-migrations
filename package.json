@@ -1,6 +1,5 @@
 {
   "name": "prisma-strong-migrations",
-  "version": "0.0.1",
   "description": "A linter for Prisma migrations to ensure safe SQL deployments",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
