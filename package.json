@@ -24,8 +24,16 @@
     "safety",
     "ci-cd"
   ],
-  "author": "Miles Zimmerman <miles@zim.dev>",
+  "author": "Miles Zimmerman <miles@zim.dev> (https://zim.dev)",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mileszim/prisma-strong-migrations.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mileszim/prisma-strong-migrations/issues"
+  },
+  "homepage": "https://github.com/mileszim/prisma-strong-migrations",
   "dependencies": {
     "chalk": "^4.1.2",
     "commander": "^9.4.1",
