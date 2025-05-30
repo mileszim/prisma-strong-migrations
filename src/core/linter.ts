@@ -3,6 +3,7 @@ import { MigrationScanner } from './migration-scanner';
 import { RuleEngine } from './rule-engine';
 import { ConfigManager } from './config';
 import { getBuiltInRules } from '../rules';
+import { GitUtils, GitOptions } from '../utils/git';
 
 export class PrismaStrongMigrationsLinter {
   private scanner: MigrationScanner;
@@ -77,6 +78,96 @@ export class PrismaStrongMigrationsLinter {
       errorCount: violations.filter(v => v.severity === 'error').length,
       warningCount: violations.filter(v => v.severity === 'warning').length,
       infoCount: violations.filter(v => v.severity === 'info').length
+    };
+  }
+
+  async lintChangedMigrations(options: GitOptions = {}): Promise<LintResult> {
+    // Check if we're in a git repository
+    if (!GitUtils.isGitRepository()) {
+      throw new Error('Not in a git repository. Cannot detect changed files.');
+    }
+
+    const migrationsPath = this.configManager.getMigrationsPath();
+    
+    // Get changed migration files
+    const changedFiles = GitUtils.getChangedMigrationFiles(migrationsPath, options);
+    
+    if (changedFiles.length === 0) {
+      return {
+        violations: [],
+        totalFiles: 0,
+        totalViolations: 0,
+        errorCount: 0,
+        warningCount: 0,
+        infoCount: 0
+      };
+    }
+
+    // Lint each changed file
+    const allViolations = [];
+    for (const filePath of changedFiles) {
+      try {
+        const migration = await this.scanner.scanSingleMigration(filePath);
+        const violations = await this.ruleEngine.analyzeMigration(migration);
+        allViolations.push(...violations);
+      } catch (_error) {
+        // Skip files that can't be read (e.g., deleted files)
+        console.warn(`Warning: Could not analyze migration file: ${filePath}`);
+      }
+    }
+
+    return {
+      violations: allViolations,
+      totalFiles: changedFiles.length,
+      totalViolations: allViolations.length,
+      errorCount: allViolations.filter(v => v.severity === 'error').length,
+      warningCount: allViolations.filter(v => v.severity === 'warning').length,
+      infoCount: allViolations.filter(v => v.severity === 'info').length
+    };
+  }
+
+  async lintChangedMigrationsSinceCommit(commitSha: string): Promise<LintResult> {
+    // Check if we're in a git repository
+    if (!GitUtils.isGitRepository()) {
+      throw new Error('Not in a git repository. Cannot detect changed files.');
+    }
+
+    const migrationsPath = this.configManager.getMigrationsPath();
+    
+    // Get changed migration files since commit
+    const changedFiles = GitUtils.getChangedMigrationFilesSinceCommit(migrationsPath, commitSha);
+    
+    if (changedFiles.length === 0) {
+      return {
+        violations: [],
+        totalFiles: 0,
+        totalViolations: 0,
+        errorCount: 0,
+        warningCount: 0,
+        infoCount: 0
+      };
+    }
+
+    // Lint each changed file
+    const allViolations = [];
+    for (const filePath of changedFiles) {
+      try {
+        const migration = await this.scanner.scanSingleMigration(filePath);
+        const violations = await this.ruleEngine.analyzeMigration(migration);
+        allViolations.push(...violations);
+      } catch (_error) {
+        // Skip files that can't be read (e.g., deleted files)
+        console.warn(`Warning: Could not analyze migration file: ${filePath}`);
+      }
+    }
+
+    return {
+      violations: allViolations,
+      totalFiles: changedFiles.length,
+      totalViolations: allViolations.length,
+      errorCount: allViolations.filter(v => v.severity === 'error').length,
+      warningCount: allViolations.filter(v => v.severity === 'warning').length,
+      infoCount: allViolations.filter(v => v.severity === 'info').length
     };
   }
 
