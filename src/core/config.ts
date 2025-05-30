@@ -125,14 +125,16 @@ export class ConfigManager {
     // Performance Rules - Warnings for potential performance issues
     'require-index-for-foreign-key': { enabled: true, severity: 'warning' },
     'no-full-table-scan': { enabled: true, severity: 'warning' },
-    'require-concurrent-index': { enabled: true, severity: 'warning' },
+    'require-concurrent-index': { enabled: true, severity: 'error' },
     
     // Data Integrity Rules - Info level for best practices
     'require-not-null-constraint': { enabled: false, severity: 'info' },
-    'require-pii-comments': { enabled: true, severity: 'info' },
+    'require-pii-comments': { enabled: false, severity: 'info' },
     
-    // Deployment Safety Rules - Warnings for deployment concerns
+    // Deployment Safety Rules - Errors for migration failures
     'no-data-manipulation': { enabled: true, severity: 'warning' },
+    'no-add-non-nullable-column': { enabled: true, severity: 'error' },
+    'no-nullable-to-non-nullable': { enabled: true, severity: 'error' },
     
     // Best Practices Rules - Info level suggestions
     'require-transaction-block': { enabled: false, severity: 'info' }

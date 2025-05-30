@@ -16,6 +16,8 @@ import { requireNotNullConstraintRule } from './data-integrity/require-not-null-
 import { requirePiiCommentsRule } from './data-integrity/require-pii-comments';
 
 import { noDataManipulationRule } from './deployment-safety/no-data-manipulation';
+import { noAddNonNullableColumnRule } from './deployment-safety/no-add-non-nullable-column';
+import { noNullableToNonNullableRule } from './deployment-safety/no-nullable-to-non-nullable';
 
 import { requireTransactionBlockRule } from './best-practices/require-transaction-block';
 
@@ -41,6 +43,8 @@ export const BUILT_IN_RULES: Record<string, Rule> = {
   
   // Deployment Safety Rules
   'no-data-manipulation': noDataManipulationRule,
+  'no-add-non-nullable-column': noAddNonNullableColumnRule,
+  'no-nullable-to-non-nullable': noNullableToNonNullableRule,
   
   // Best Practices Rules
   'require-transaction-block': requireTransactionBlockRule,

@@ -58,8 +58,10 @@ module.exports = {
     'require-not-null-constraint': { enabled: false, severity: 'info' },
     'require-pii-comments': { enabled: false, severity: 'info' },
     'no-data-manipulation': { enabled: true, severity: 'warning' },
+    'no-add-non-nullable-column': { enabled: true, severity: 'error' },
+    'no-nullable-to-non-nullable': { enabled: true, severity: 'error' },
     'require-transaction-block': { enabled: false, severity: 'info' },
-    'require-concurrent-index': { enabled: true, severity: 'warning' }
+    'require-concurrent-index': { enabled: true, severity: 'error' }
   }
 };
 ```
@@ -129,6 +131,14 @@ module.exports = {
 - **`no-data-manipulation`**: Prevents data manipulation in schema migrations
   - Severity: `warning`
   - Recommendation: Move INSERT/UPDATE/DELETE to separate data migrations
+
+- **`no-add-non-nullable-column`**: Prevents adding non-nullable columns without defaults
+  - Severity: `error`
+  - Recommendation: Add a DEFAULT value when adding non-nullable columns, or make the column nullable initially
+
+- **`no-nullable-to-non-nullable`**: Prevents changing nullable columns to non-nullable
+  - Severity: `error`  
+  - Recommendation: First backfill NULL values before adding NOT NULL constraint
 
 ### Best Practices
 
