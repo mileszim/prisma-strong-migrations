@@ -5,6 +5,7 @@ import { PrismaStrongMigrationsLinter } from './core/linter';
 import { ReporterFactory } from './reporters';
 import { ConfigManager } from './core/config';
 import { OutputFormat } from './types';
+import { GitUtils } from './utils/git';
 
 const program = new Command();
 
@@ -21,6 +22,11 @@ program
   .option('--recent <count>', 'lint only the most recent N migrations', '0')
   .option('--since <id>', 'lint migrations since the specified migration ID')
   .option('--file <path>', 'lint a specific migration file')
+  .option('--changed', 'lint only changed migration files (compared to base branch)')
+  .option('--base <branch>', 'base branch to compare against for changed files', 'origin/main')
+  .option('--since-commit <sha>', 'lint changed migration files since specific commit')
+  .option('--added-only', 'include only added files when using --changed')
+  .option('--modified-only', 'include only modified files when using --changed')
   .action(async (options) => {
     try {
       const linter = new PrismaStrongMigrationsLinter(options.config);
@@ -28,6 +34,39 @@ program
       let result;
       if (options.file) {
         result = await linter.lintFile(options.file);
+      } else if (options.sinceCommit) {
+        result = await linter.lintChangedMigrationsSinceCommit(options.sinceCommit);
+      } else if (options.changed) {
+        // Validate git repository and base branch
+        if (!GitUtils.isGitRepository()) {
+          console.error('Error: Not in a git repository. Cannot use --changed option.');
+          process.exit(1);
+        }
+
+        const baseBranch = options.base;
+        if (!GitUtils.branchExists(baseBranch)) {
+          console.error(`Error: Base branch '${baseBranch}' does not exist.`);
+          console.error(`Try: git fetch origin or use a different --base branch`);
+          process.exit(1);
+        }
+
+        const gitOptions = {
+          base: baseBranch,
+          addedOnly: options.addedOnly,
+          modifiedOnly: options.modifiedOnly,
+          includeAll: !options.addedOnly && !options.modifiedOnly
+        };
+
+        result = await linter.lintChangedMigrations(gitOptions);
+        
+        // Provide helpful feedback about what was checked
+        if (result.totalFiles === 0) {
+          const currentBranch = GitUtils.getCurrentBranch();
+          console.log(`No changed migration files found between ${baseBranch} and ${currentBranch}`);
+        } else {
+          const currentBranch = GitUtils.getCurrentBranch();
+          console.log(`Linting ${result.totalFiles} changed migration file(s) between ${baseBranch} and ${currentBranch}`);
+        }
       } else if (options.since) {
         result = await linter.lintMigrationsSince(options.since);
       } else if (options.recent && parseInt(options.recent) > 0) {

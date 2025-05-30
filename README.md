@@ -34,6 +34,61 @@ npx prisma-strong-migrations lint
 npx prisma-strong-migrations lint --recent 1
 ```
 
+4. **Lint only changed migrations (perfect for PRs):**
+```bash
+npx prisma-strong-migrations lint --changed
+```
+
+## CLI Usage
+
+### Lint Commands
+
+```bash
+# Lint all migration files
+npx prisma-strong-migrations lint
+
+# Lint only changed migration files (compared to main branch)
+npx prisma-strong-migrations lint --changed
+
+# Lint changed files compared to a specific branch
+npx prisma-strong-migrations lint --changed --base origin/develop
+
+# Lint only added migration files
+npx prisma-strong-migrations lint --changed --added-only
+
+# Lint only modified migration files  
+npx prisma-strong-migrations lint --changed --modified-only
+
+# Lint changed files since a specific commit
+npx prisma-strong-migrations lint --since-commit abc123
+
+# Lint recent migrations only
+npx prisma-strong-migrations lint --recent 1
+
+# Lint migrations since a specific migration ID
+npx prisma-strong-migrations lint --since 20231201120000_add_users
+
+# Lint a specific file
+npx prisma-strong-migrations lint --file ./prisma/migrations/20231201120000_add_users/migration.sql
+
+# Custom output format
+npx prisma-strong-migrations lint --format json
+npx prisma-strong-migrations lint --format junit
+```
+
+### Other Commands
+
+```bash
+# Create default configuration file
+npx prisma-strong-migrations init
+
+# List all available rules
+npx prisma-strong-migrations rules
+
+# Check configuration and setup
+npx prisma-strong-migrations check
+```
+
 ## Configuration
 
 Create a `.prisma-strong-migrations.js` file in your project root:
@@ -151,55 +206,35 @@ module.exports = {
   - Severity: `info`
   - Recommendation: Wrap multiple operations in BEGIN/COMMIT blocks
 
-## CLI Commands
-
-### `lint`
-Lint migration files:
-
-```bash
-# Lint all migrations
-npx prisma-strong-migrations lint
-
-# Lint recent migrations
-npx prisma-strong-migrations lint --recent 3
-
-# Lint since specific migration
-npx prisma-strong-migrations lint --since 20231201120000
-
-# Lint specific file
-npx prisma-strong-migrations lint --file ./prisma/migrations/20231201120000_add_users/migration.sql
-
-# Output as JSON
-npx prisma-strong-migrations lint --format json
-
-# Output as JUnit XML (for CI)
-npx prisma-strong-migrations lint --format junit
-```
-
-### `rules`
-List all available rules:
-
-```bash
-npx prisma-strong-migrations rules
-```
-
-### `check`
-Check configuration and setup:
-
-```bash
-npx prisma-strong-migrations check
-```
-
-### `init`
-Create default configuration file:
-
-```bash
-npx prisma-strong-migrations init
-```
-
 ## CI/CD Integration
 
-### GitHub Actions
+### GitHub Actions (Recommended for PRs)
+
+For the most efficient CI workflow, lint only the migration files that have changed in your PR:
+
+```yaml
+name: Migration Safety Check
+on: [pull_request]
+
+jobs:
+  migration-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          # Fetch enough history to compare with base branch
+          fetch-depth: 0
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - run: npm install
+      # Lint only changed migration files
+      - run: npx prisma-strong-migrations lint --changed --format junit
+```
+
+### GitHub Actions (Lint all migrations)
+
+If you prefer to lint all migrations on every run:
 
 ```yaml
 name: Migration Safety Check
@@ -217,14 +252,39 @@ jobs:
       - run: npx prisma-strong-migrations lint --format junit
 ```
 
+### Advanced GitHub Actions with Different Base Branch
+
+```yaml
+name: Migration Safety Check
+on: [pull_request]
+
+jobs:
+  migration-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - run: npm install
+      # Use a different base branch
+      - run: npx prisma-strong-migrations lint --changed --base origin/develop --format junit
+```
+
 ### GitLab CI
 
 ```yaml
 migration-lint:
   stage: test
+  before_script:
+    # Fetch origin to ensure we have the base branch
+    - git fetch origin
   script:
     - npm install
-    - npx prisma-strong-migrations lint --format junit
+    # Lint only changed files compared to main branch
+    - npx prisma-strong-migrations lint --changed --base origin/main --format junit
   artifacts:
     reports:
       junit: junit.xml
@@ -233,7 +293,7 @@ migration-lint:
 ## Programmatic Usage
 
 ```typescript
-import { PrismaStrongMigrationsLinter } from 'prisma-strong-migrations';
+import { PrismaStrongMigrationsLinter, GitUtils } from 'prisma-strong-migrations';
 
 const linter = new PrismaStrongMigrationsLinter();
 
@@ -243,9 +303,28 @@ const result = await linter.lintMigrations();
 // Lint recent migrations
 const recentResult = await linter.lintRecentMigrations(1);
 
+// Lint only changed migration files (perfect for CI/CD)
+const changedResult = await linter.lintChangedMigrations({
+  base: 'origin/main',
+  addedOnly: false,
+  modifiedOnly: false
+});
+
+// Lint changed files since a specific commit
+const sinceCommitResult = await linter.lintChangedMigrationsSinceCommit('abc123');
+
 // Check if should exit with error code
 if (linter.shouldExit(result)) {
   process.exit(1);
+}
+
+// Direct git utilities usage
+if (GitUtils.isGitRepository()) {
+  const currentBranch = GitUtils.getCurrentBranch();
+  const changedFiles = GitUtils.getChangedMigrationFiles('./prisma/migrations', {
+    base: 'origin/main'
+  });
+  console.log(`Changed migration files in ${currentBranch}:`, changedFiles);
 }
 ```
 

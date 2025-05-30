@@ -6,6 +6,7 @@ export { SQLParser } from './core/sql-parser';
 
 export { getBuiltInRules, getBuiltInRule, createCustomRule } from './rules';
 export { ReporterFactory, TextReporter, JsonReporter, JunitReporter } from './reporters';
+export { GitUtils } from './utils/git';
 
 export * from './types';
 
