@@ -53,6 +53,7 @@ module.exports = {
     'no-add-column-without-default': { enabled: true, severity: 'warning' },
     'require-foreign-key-cascade': { enabled: true, severity: 'warning' },
     'no-unique-constraint-without-index': { enabled: true, severity: 'warning' },
+    'no-drop-foreign-key-constraint': { enabled: true, severity: 'warning' },
     'require-index-for-foreign-key': { enabled: true, severity: 'warning' },
     'no-full-table-scan': { enabled: true, severity: 'warning' },
     'require-not-null-constraint': { enabled: false, severity: 'info' },
@@ -101,6 +102,10 @@ module.exports = {
 - **`no-unique-constraint-without-index`**: Warns about unique constraints that may fail
   - Severity: `warning`
   - Recommendation: Check for duplicates before adding unique constraints
+
+- **`no-drop-foreign-key-constraint`**: Warns about dropping foreign key constraints
+  - Severity: `warning`
+  - Recommendation: Ensure data consistency is maintained through application logic if constraint is removed
 
 ### Performance
 

@@ -7,6 +7,7 @@ import { requireForeignKeyCascadeRule } from './schema-safety/require-foreign-ke
 import { noUniqueConstraintWithoutIndexRule } from './schema-safety/no-unique-constraint-without-index';
 import { noColumnRenameRule } from './schema-safety/no-column-rename';
 import { noTableRenameRule } from './schema-safety/no-table-rename';
+import { noDropForeignKeyConstraintRule } from './schema-safety/no-drop-foreign-key-constraint';
 
 import { requireIndexForForeignKeyRule } from './performance/require-index-for-foreign-key';
 import { noFullTableScanRule } from './performance/no-full-table-scan';
@@ -31,6 +32,7 @@ export const BUILT_IN_RULES: Record<string, Rule> = {
   'no-unique-constraint-without-index': noUniqueConstraintWithoutIndexRule,
   'no-column-rename': noColumnRenameRule,
   'no-table-rename': noTableRenameRule,
+  'no-drop-foreign-key-constraint': noDropForeignKeyConstraintRule,
   
   // Performance Rules
   'require-index-for-foreign-key': requireIndexForForeignKeyRule,

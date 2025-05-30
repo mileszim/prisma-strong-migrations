@@ -121,6 +121,7 @@ export class ConfigManager {
     'no-add-column-without-default': { enabled: true, severity: 'warning' },
     'require-foreign-key-cascade': { enabled: true, severity: 'warning' },
     'no-unique-constraint-without-index': { enabled: true, severity: 'warning' },
+    'no-drop-foreign-key-constraint': { enabled: true, severity: 'warning' },
     
     // Performance Rules - Warnings for potential performance issues
     'require-index-for-foreign-key': { enabled: true, severity: 'warning' },
