@@ -110,7 +110,7 @@ export class PrismaStrongMigrationsLinter {
         const migration = await this.scanner.scanSingleMigration(filePath);
         const violations = await this.ruleEngine.analyzeMigration(migration);
         allViolations.push(...violations);
-      } catch (error) {
+      } catch (_error) {
         // Skip files that can't be read (e.g., deleted files)
         console.warn(`Warning: Could not analyze migration file: ${filePath}`);
       }
@@ -155,7 +155,7 @@ export class PrismaStrongMigrationsLinter {
         const migration = await this.scanner.scanSingleMigration(filePath);
         const violations = await this.ruleEngine.analyzeMigration(migration);
         allViolations.push(...violations);
-      } catch (error) {
+      } catch (_error) {
         // Skip files that can't be read (e.g., deleted files)
         console.warn(`Warning: Could not analyze migration file: ${filePath}`);
       }
