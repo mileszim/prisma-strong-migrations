@@ -44,10 +44,9 @@ export class MigrationScanner {
     for (const pattern of patterns) {
       try {
         const matchedFiles = await new Promise<string[]>((resolve, reject) => {
-          glob(pattern, { absolute: true }, (err, matches) => {
-            if (err) reject(err);
-            else resolve(matches);
-          });
+          glob(pattern, { absolute: true })
+            .then(matches => resolve(matches))
+            .catch(err => reject(err));
         });
         
         // Filter out excluded files manually
