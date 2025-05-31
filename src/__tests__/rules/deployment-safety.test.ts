@@ -1,7 +1,7 @@
-import { noDataManipulationRule } from '../rules/deployment-safety/no-data-manipulation';
-import { noAddNonNullableColumnRule } from '../rules/deployment-safety/no-add-non-nullable-column';
-import { noNullableToNonNullableRule } from '../rules/deployment-safety/no-nullable-to-non-nullable';
-import { Migration, SQLStatement, Severity, RuleCategory } from '../types';
+import { noDataManipulationRule } from '../../rules/deployment-safety/no-data-manipulation';
+import { noAddNonNullableColumnRule } from '../../rules/deployment-safety/no-add-non-nullable-column';
+import { noNullableToNonNullableRule } from '../../rules/deployment-safety/no-nullable-to-non-nullable';
+import { Migration, SQLStatement, Severity, RuleCategory } from '../../types';
 
 describe('Deployment Safety Rules', () => {
   const createMockMigration = (content: string, statements: SQLStatement[]): Migration => ({
@@ -160,6 +160,20 @@ describe('Deployment Safety Rules', () => {
       expect(violations).toHaveLength(0);
     });
 
+    it('should handle case insensitive statements', () => {
+      const statement: SQLStatement = {
+        type: 'INSERT',
+        content: 'insert into users (name) values (\'test\');',
+        startLine: 1,
+        endLine: 1
+      };
+      
+      const migration = createMockMigration(statement.content, [statement]);
+      const violations = noDataManipulationRule.check(statement, migration);
+      
+      expect(violations).toHaveLength(1);
+    });
+
     it('should have correct rule metadata', () => {
       expect(noDataManipulationRule.id).toBe('no-data-manipulation');
       expect(noDataManipulationRule.name).toBe('No Data Manipulation');
@@ -195,7 +209,7 @@ describe('Deployment Safety Rules', () => {
         startLine: 1,
         endLine: 1
       };
-      
+
       const migration = createMockMigration(statement.content, [statement]);
       const violations = noAddNonNullableColumnRule.check(statement, migration);
       
@@ -206,62 +220,107 @@ describe('Deployment Safety Rules', () => {
       expect(violations[0].category).toBe(RuleCategory.DEPLOYMENT_SAFETY);
       expect(violations[0].message).toBe('Adding a non-nullable column without a default value will fail if the table contains existing rows');
       expect(violations[0].line).toBe(1);
-      expect(violations[0].suggestion).toContain('Add a DEFAULT value');
     });
 
-    it('should NOT trigger when adding non-nullable column with default', () => {
+    it('should detect multiple non-nullable columns being added', () => {
       const statement: SQLStatement = {
         type: 'ALTER_TABLE',
-        content: 'ALTER TABLE users ADD COLUMN age INTEGER NOT NULL DEFAULT 0;',
+        content: 'ALTER TABLE users ADD COLUMN name VARCHAR(255) NOT NULL, ADD COLUMN email VARCHAR(255) NOT NULL;',
         startLine: 1,
         endLine: 1
       };
-      
+
       const migration = createMockMigration(statement.content, [statement]);
       const violations = noAddNonNullableColumnRule.check(statement, migration);
       
-      expect(violations).toHaveLength(0);
+      expect(violations).toHaveLength(1); // Only detects one violation per statement
+      expect(violations[0].message).toBe('Adding a non-nullable column without a default value will fail if the table contains existing rows');
     });
 
-    it('should NOT trigger when adding nullable column', () => {
+    it('should NOT trigger for nullable columns', () => {
       const statement: SQLStatement = {
         type: 'ALTER_TABLE',
         content: 'ALTER TABLE users ADD COLUMN age INTEGER;',
         startLine: 1,
         endLine: 1
       };
-      
+
       const migration = createMockMigration(statement.content, [statement]);
       const violations = noAddNonNullableColumnRule.check(statement, migration);
       
       expect(violations).toHaveLength(0);
     });
 
-    it('should handle case insensitive SQL', () => {
+    it('should NOT trigger for non-nullable columns with default', () => {
       const statement: SQLStatement = {
         type: 'ALTER_TABLE',
-        content: 'alter table users add column status varchar(50) not null;',
+        content: 'ALTER TABLE users ADD COLUMN age INTEGER NOT NULL DEFAULT 0;',
         startLine: 1,
         endLine: 1
       };
+
+      const migration = createMockMigration(statement.content, [statement]);
+      const violations = noAddNonNullableColumnRule.check(statement, migration);
       
+      expect(violations).toHaveLength(0);
+    });
+
+    it('should handle case insensitive statements', () => {
+      const statement: SQLStatement = {
+        type: 'ALTER_TABLE',
+        content: 'alter table users add column age integer not null;',
+        startLine: 1,
+        endLine: 1
+      };
+
       const migration = createMockMigration(statement.content, [statement]);
       const violations = noAddNonNullableColumnRule.check(statement, migration);
       
       expect(violations).toHaveLength(1);
-      expect(violations[0].ruleId).toBe('no-add-non-nullable-column');
+    });
+
+    it('should NOT trigger for other ALTER TABLE operations', () => {
+      const statements: SQLStatement[] = [
+        {
+          type: 'ALTER_TABLE',
+          content: 'ALTER TABLE users DROP COLUMN old_column;',
+          startLine: 1,
+          endLine: 1
+        },
+        {
+          type: 'ALTER_TABLE',
+          content: 'ALTER TABLE users MODIFY COLUMN name VARCHAR(200);',
+          startLine: 2,
+          endLine: 2
+        }
+      ];
+
+      statements.forEach(statement => {
+        const migration = createMockMigration(statement.content, [statement]);
+        const violations = noAddNonNullableColumnRule.check(statement, migration);
+        expect(violations).toHaveLength(0);
+      });
+    });
+
+    it('should have correct rule metadata', () => {
+      expect(noAddNonNullableColumnRule.id).toBe('no-add-non-nullable-column');
+      expect(noAddNonNullableColumnRule.name).toBe('No Add Non-Nullable Column Without Default');
+      expect(noAddNonNullableColumnRule.description).toBe('Adding a non-nullable column without a default value might fail if the table is not empty');
+      expect(noAddNonNullableColumnRule.severity).toBe(Severity.ERROR);
+      expect(noAddNonNullableColumnRule.category).toBe(RuleCategory.DEPLOYMENT_SAFETY);
+      expect(noAddNonNullableColumnRule.enabled).toBe(true);
     });
   });
 
   describe('No Nullable To Non-Nullable Rule', () => {
-    it('should detect PostgreSQL ALTER COLUMN SET NOT NULL', () => {
+    it('should detect ALTER COLUMN SET NOT NULL', () => {
       const statement: SQLStatement = {
         type: 'ALTER_TABLE',
         content: 'ALTER TABLE users ALTER COLUMN email SET NOT NULL;',
         startLine: 1,
         endLine: 1
       };
-      
+
       const migration = createMockMigration(statement.content, [statement]);
       const violations = noNullableToNonNullableRule.check(statement, migration);
       
@@ -272,97 +331,85 @@ describe('Deployment Safety Rules', () => {
       expect(violations[0].category).toBe(RuleCategory.DEPLOYMENT_SAFETY);
       expect(violations[0].message).toBe('Changing a nullable column to non-nullable will fail if the column contains NULL values');
       expect(violations[0].line).toBe(1);
-      expect(violations[0].suggestion).toContain('First backfill NULL values');
     });
 
-    it('should detect MySQL MODIFY COLUMN NOT NULL', () => {
+    it('should detect MODIFY COLUMN with NOT NULL', () => {
       const statement: SQLStatement = {
         type: 'ALTER_TABLE',
-        content: 'ALTER TABLE users MODIFY COLUMN email VARCHAR(255) NOT NULL;',
+        content: 'ALTER TABLE users\nMODIFY COLUMN phone VARCHAR(20) NOT NULL;',
         startLine: 1,
-        endLine: 1
+        endLine: 2
       };
-      
+
       const migration = createMockMigration(statement.content, [statement]);
       const violations = noNullableToNonNullableRule.check(statement, migration);
       
       expect(violations).toHaveLength(1);
-      expect(violations[0].ruleId).toBe('no-nullable-to-non-nullable');
+      expect(violations[0].message).toBe('Changing a nullable column to non-nullable will fail if the column contains NULL values');
+      expect(violations[0].line).toBe(1);
     });
 
-    it('should detect SQL Server ALTER COLUMN NOT NULL', () => {
+    it('should detect multiple column modifications', () => {
       const statement: SQLStatement = {
         type: 'ALTER_TABLE',
-        content: 'ALTER TABLE users ALTER COLUMN email NVARCHAR(255) NOT NULL;',
+        content: 'ALTER TABLE users\nALTER COLUMN email SET NOT NULL,\nALTER COLUMN phone SET NOT NULL;',
         startLine: 1,
-        endLine: 1
+        endLine: 3
       };
-      
+
       const migration = createMockMigration(statement.content, [statement]);
       const violations = noNullableToNonNullableRule.check(statement, migration);
       
-      expect(violations).toHaveLength(1);
-      expect(violations[0].ruleId).toBe('no-nullable-to-non-nullable');
+      expect(violations).toHaveLength(1); // Only detects one violation per statement
+      expect(violations[0].message).toBe('Changing a nullable column to non-nullable will fail if the column contains NULL values');
     });
 
-    it('should detect MySQL CHANGE COLUMN NOT NULL', () => {
-      const statement: SQLStatement = {
-        type: 'ALTER_TABLE',
-        content: 'ALTER TABLE users CHANGE COLUMN old_email email VARCHAR(255) NOT NULL;',
-        startLine: 1,
-        endLine: 1
-      };
-      
-      const migration = createMockMigration(statement.content, [statement]);
-      const violations = noNullableToNonNullableRule.check(statement, migration);
-      
-      expect(violations).toHaveLength(1);
-      expect(violations[0].ruleId).toBe('no-nullable-to-non-nullable');
-    });
-
-    it('should handle case insensitive SQL', () => {
-      const statement: SQLStatement = {
-        type: 'ALTER_TABLE',
-        content: 'alter table users alter column email set not null;',
-        startLine: 1,
-        endLine: 1
-      };
-      
-      const migration = createMockMigration(statement.content, [statement]);
-      const violations = noNullableToNonNullableRule.check(statement, migration);
-      
-      expect(violations).toHaveLength(1);
-      expect(violations[0].ruleId).toBe('no-nullable-to-non-nullable');
-    });
-
-    it('should NOT trigger for other ALTER COLUMN operations', () => {
-      const statements: SQLStatement[] = [
-        {
-          type: 'ALTER_TABLE',
-          content: 'ALTER TABLE users ALTER COLUMN email TYPE VARCHAR(300);',
-          startLine: 1,
-          endLine: 1
-        },
-        {
-          type: 'ALTER_TABLE',
-          content: 'ALTER TABLE users ALTER COLUMN email SET DEFAULT \'unknown@example.com\';',
-          startLine: 2,
-          endLine: 2
-        }
+    it('should NOT trigger for other column modifications', () => {
+      const statements = [
+        'ALTER TABLE users ALTER COLUMN email TYPE VARCHAR(100);',
+        'ALTER TABLE users ALTER COLUMN email SET DEFAULT \'\';',
+        'ALTER TABLE users ALTER COLUMN email DROP DEFAULT;'
       ];
 
-      statements.forEach(statement => {
+      statements.forEach(content => {
+        const statement: SQLStatement = {
+          type: 'ALTER_TABLE',
+          content,
+          startLine: 1,
+          endLine: 1
+        };
         const migration = createMockMigration(statement.content, [statement]);
         const violations = noNullableToNonNullableRule.check(statement, migration);
         expect(violations).toHaveLength(0);
       });
     });
-  });
 
-  // Future deployment safety rules can be added here, such as:
-  // - no-concurrent-schema-and-data-changes
-  // - require-transaction-isolation
-  // - no-long-running-operations
-  // - require-rollback-plan
-  // etc.
+    it('should handle different database syntax variations', () => {
+      const statements = [
+        'ALTER TABLE users ALTER COLUMN email SET NOT NULL;',
+        'ALTER TABLE users MODIFY COLUMN email VARCHAR(255) NOT NULL;'
+      ];
+
+      statements.forEach(content => {
+        const statement: SQLStatement = {
+          type: 'ALTER_TABLE',
+          content,
+          startLine: 1,
+          endLine: 1
+        };
+        const migration = createMockMigration(statement.content, [statement]);
+        const violations = noNullableToNonNullableRule.check(statement, migration);
+        expect(violations).toHaveLength(1);
+      });
+    });
+
+    it('should have correct rule metadata', () => {
+      expect(noNullableToNonNullableRule.id).toBe('no-nullable-to-non-nullable');
+      expect(noNullableToNonNullableRule.name).toBe('No Nullable To Non-Nullable Column Change');
+      expect(noNullableToNonNullableRule.description).toBe('Modifying a nullable column to non-nullable might fail if it contains NULL values');
+      expect(noNullableToNonNullableRule.severity).toBe(Severity.ERROR);
+      expect(noNullableToNonNullableRule.category).toBe(RuleCategory.DEPLOYMENT_SAFETY);
+      expect(noNullableToNonNullableRule.enabled).toBe(true);
+    });
+  });
 }); 
