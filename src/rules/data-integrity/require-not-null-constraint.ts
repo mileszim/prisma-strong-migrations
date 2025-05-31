@@ -17,21 +17,40 @@ export const requireNotNullConstraintRule: Rule = {
       
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
+        const upperLine = line.toUpperCase();
         
-        // Skip if it's not a column definition or already has NOT NULL/NULL
+        // Skip if it's not a column definition line
         if (!line.includes(' ') || 
-            line.toUpperCase().includes('NOT NULL') || 
-            line.toUpperCase().includes('NULL') ||
             line.startsWith('--') ||
-            line.includes('PRIMARY KEY') ||
-            line.includes('FOREIGN KEY') ||
-            line.includes('CONSTRAINT')) {
+            line.startsWith('CREATE') ||
+            line.startsWith('(') ||
+            line.startsWith(')') ||
+            upperLine.includes('CONSTRAINT') ||
+            upperLine.includes('FOREIGN KEY') ||
+            upperLine.includes('INDEX')) {
           continue;
         }
         
-        // Simple heuristic: if it looks like a column definition without NULL specification
-        const columnPattern = /^\s*(\w+)\s+\w+/;
-        if (columnPattern.test(line)) {
+        // Remove trailing comma and parenthesis for easier parsing
+        const cleanLine = line.replace(/[,);]/g, '').trim();
+        
+        // Check if this looks like a column definition (has column name and data type)
+        const columnPattern = /^\s*(\w+)\s+(\w+(?:\(\d+(?:,\s*\d+)?\))?)/;
+        const match = columnPattern.exec(cleanLine);
+        
+        if (match) {
+          // Skip if line already has PRIMARY KEY (implicitly NOT NULL)
+          if (upperLine.includes('PRIMARY KEY')) {
+            continue;
+          }
+          
+          // Skip if line already explicitly specifies NULL or NOT NULL
+          if (upperLine.includes('NOT NULL') || 
+              upperLine.match(/\bNULL\b/) && !upperLine.includes('NOT NULL')) {
+            continue;
+          }
+          
+          // This is a column definition without explicit NULL specification
           violations.push({
             ruleId: 'require-not-null-constraint',
             ruleName: 'Require NOT NULL Constraint',
