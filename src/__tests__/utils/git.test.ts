@@ -1,4 +1,4 @@
-import { GitUtils } from '../git';
+import { GitUtils } from '../../utils/git';
 import { execSync } from 'child_process';
 
 // Mock execSync for testing
