@@ -1,45 +1,59 @@
 name: CI
 
-# run when opening PR or pushing to main
 on:
   pull_request:
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
   test:
-    name: test
+    name: Build, lint & test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ['18', '20', '22']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+      - run: npm test
+
+  action:
+    name: Action end-to-end
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      # The action should pass on a clean set of migrations.
+      - name: Lint the safe example (expect pass)
+        uses: ./
         with:
-          fetch-depth: 0
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+          working-directory: examples/safe
+          reporter: stylish
+
+      # The action should fail on unsafe migrations. We capture the outcome and
+      # assert it, so a regression where nothing is detected fails the build.
+      - name: Lint the unsafe example (expect fail)
+        id: unsafe
+        continue-on-error: true
+        uses: ./
         with:
-          node-version: "24"
-      - name: Install dependencies
-        run: npm clean-install
-      - name: Test
-        run: npm run test
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-      - name: Install dependencies
-        run: npm clean-install
-      - name: Lint
-        run: npm run lint
+          working-directory: examples/unsafe
+          reporter: stylish
+
+      - name: Assert the unsafe example was rejected
+        run: |
+          if [ "${{ steps.unsafe.outcome }}" != "failure" ]; then
+            echo "Expected the linter to fail on the unsafe example, but it did not."
+            exit 1
+          fi
+          echo "Unsafe migrations were correctly rejected."

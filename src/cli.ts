@@ -1,185 +1,199 @@
 #!/usr/bin/env node
+import { writeFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { Command, CommanderError } from 'commander';
+import pc from 'picocolors';
+import { ConfigError, type UserConfig } from './config';
+import { lintProject, shouldFail } from './lint';
+import { getReporter, isReporterName, type ReporterName } from './reporters';
+import { ALL_RULES } from './rules';
+import type { ReportedSeverity } from './types';
 
-import { Command } from 'commander';
-import { PrismaStrongMigrationsLinter } from './core/linter';
-import { ReporterFactory } from './reporters';
-import { ConfigManager } from './core/config';
-import { OutputFormat } from './types';
-import { GitUtils } from './utils/git';
+const VERSION = '0.1.0';
 
-const program = new Command();
+interface LintFlags {
+  config?: string;
+  migrationsDir?: string;
+  dialect?: string;
+  changed?: boolean;
+  base?: string;
+  reporter?: string;
+  failOn?: string;
+}
 
-program
-  .name('prisma-strong-migrations')
-  .description('A linter for Prisma migrations to ensure safe SQL deployments')
-  .version('1.0.0');
+/** Parse argv and run the CLI. Returns the process exit code. */
+export async function run(argv: string[]): Promise<number> {
+  let exitCode = 0;
+  const program = new Command();
 
-program
-  .command('lint')
-  .description('Lint all migration files')
-  .option('-c, --config <path>', 'path to configuration file')
-  .option('-f, --format <format>', 'output format (text, json, junit)', 'text')
-  .option('--recent <count>', 'lint only the most recent N migrations', '0')
-  .option('--since <id>', 'lint migrations since the specified migration ID')
-  .option('--file <path>', 'lint a specific migration file')
-  .option('--changed', 'lint only changed migration files (compared to base branch)')
-  .option('--base <branch>', 'base branch to compare against for changed files', 'origin/main')
-  .option('--since-commit <sha>', 'lint changed migration files since specific commit')
-  .option('--added-only', 'include only added files when using --changed')
-  .option('--modified-only', 'include only modified files when using --changed')
-  .action(async (options) => {
-    try {
-      const linter = new PrismaStrongMigrationsLinter(options.config);
-      
-      let result;
-      if (options.file) {
-        result = await linter.lintFile(options.file);
-      } else if (options.sinceCommit) {
-        result = await linter.lintChangedMigrationsSinceCommit(options.sinceCommit);
-      } else if (options.changed) {
-        // Validate git repository and base branch
-        if (!GitUtils.isGitRepository()) {
-          console.error('Error: Not in a git repository. Cannot use --changed option.');
-          process.exit(1);
-        }
+  program
+    .name('prisma-strong-migrations')
+    .description('Lint Prisma migrations for unsafe SQL before it reaches production.')
+    .version(VERSION)
+    .exitOverride();
 
-        const baseBranch = options.base;
-        if (!GitUtils.branchExists(baseBranch)) {
-          console.error(`Error: Base branch '${baseBranch}' does not exist.`);
-          console.error(`Try: git fetch origin or use a different --base branch`);
-          process.exit(1);
-        }
+  program
+    .command('lint', { isDefault: true })
+    .description('Lint migration files for unsafe patterns')
+    .argument('[files...]', 'specific migration.sql files to lint')
+    .option('-c, --config <path>', 'path to a config file')
+    .option('-d, --migrations-dir <dir>', 'directory containing Prisma migrations')
+    .option('--dialect <dialect>', 'SQL dialect (postgresql)')
+    .option('--changed', 'lint only migrations changed versus the base ref')
+    .option('--base <ref>', 'base git ref for --changed (default: origin/<PR base> or origin/main)')
+    .option('-r, --reporter <name>', 'output format: stylish, json, or github')
+    .option('--fail-on <severity>', 'severity that fails the run: error or warning')
+    .action(async (files: string[], flags: LintFlags) => {
+      exitCode = await runLint(files, flags);
+    });
 
-        const gitOptions = {
-          base: baseBranch,
-          addedOnly: options.addedOnly,
-          modifiedOnly: options.modifiedOnly,
-          includeAll: !options.addedOnly && !options.modifiedOnly
-        };
+  program
+    .command('list-rules')
+    .description('List all built-in rules')
+    .option('--json', 'output as JSON')
+    .action((flags: { json?: boolean }) => {
+      exitCode = runListRules(Boolean(flags.json));
+    });
 
-        result = await linter.lintChangedMigrations(gitOptions);
-        
-        // Provide helpful feedback about what was checked
-        if (result.totalFiles === 0) {
-          const currentBranch = GitUtils.getCurrentBranch();
-          console.log(`No changed migration files found between ${baseBranch} and ${currentBranch}`);
-        } else {
-          const currentBranch = GitUtils.getCurrentBranch();
-          console.log(`Linting ${result.totalFiles} changed migration file(s) between ${baseBranch} and ${currentBranch}`);
-        }
-      } else if (options.since) {
-        result = await linter.lintMigrationsSince(options.since);
-      } else if (options.recent && parseInt(options.recent) > 0) {
-        result = await linter.lintRecentMigrations(parseInt(options.recent));
-      } else {
-        result = await linter.lintMigrations();
-      }
-      
-      const format = options.format as OutputFormat;
-      const reporter = ReporterFactory.create(format);
-      const output = reporter.format(result);
-      
-      console.log(output);
-      
-      if (linter.shouldExit(result)) {
-        process.exit(1);
-      }
-    } catch (error) {
-      console.error('Error:', error instanceof Error ? error.message : error);
-      process.exit(1);
+  program
+    .command('init')
+    .description('Write a starter config file')
+    .option('-f, --force', 'overwrite an existing config file')
+    .action((flags: { force?: boolean }) => {
+      exitCode = runInit(Boolean(flags.force));
+    });
+
+  try {
+    await program.parseAsync(argv, { from: 'user' });
+  } catch (error) {
+    if (error instanceof CommanderError) {
+      // Help and version are not failures; parse errors carry their own code.
+      return error.exitCode;
     }
-  });
+    printError(error);
+    return 1;
+  }
 
-program
-  .command('init')
-  .description('Create a default configuration file')
-  .option('-f, --force', 'overwrite existing configuration file')
-  .action(async (options) => {
-    try {
-      const fs = await import('fs');
-      const path = await import('path');
-      
-      const configFile = '.prisma-strong-migrations.js';
-      const configPath = path.join(process.cwd(), configFile);
-      
-      if (fs.existsSync(configPath) && !options.force) {
-        console.error(`Configuration file ${configFile} already exists. Use --force to overwrite.`);
-        process.exit(1);
-      }
-      
-      const defaultConfig = ConfigManager.createDefaultConfig();
-      fs.writeFileSync(configPath, defaultConfig);
-      
-      console.log(`Created configuration file: ${configFile}`);
-    } catch (error) {
-      console.error('Error creating configuration file:', error instanceof Error ? error.message : error);
-      process.exit(1);
-    }
-  });
+  return exitCode;
+}
 
-program
-  .command('rules')
-  .description('List all available rules')
-  .option('-c, --config <path>', 'path to configuration file')
-  .action(async (options) => {
-    try {
-      const linter = new PrismaStrongMigrationsLinter(options.config);
-      const rules = linter.getAllRules();
-      
-      console.log('Available rules:\n');
-      
-      for (const rule of rules) {
-        const status = rule.enabled ? '✓' : '✗';
-        const severity = rule.severity.toUpperCase().padEnd(7);
-        
-        console.log(`${status} ${rule.id.padEnd(30)} ${severity} ${rule.description}`);
-        
-        if (rule.recommendation) {
-          console.log(`   💡 ${rule.recommendation}`);
-        }
-        console.log();
-      }
-    } catch (error) {
-      console.error('Error listing rules:', error instanceof Error ? error.message : error);
-      process.exit(1);
-    }
-  });
+async function runLint(files: string[], flags: LintFlags): Promise<number> {
+  const reporterName = resolveReporter(flags.reporter);
+  if (!reporterName) {
+    console.error(pc.red(`Unknown reporter "${flags.reporter}". Use stylish, json, or github.`));
+    return 1;
+  }
 
-program
-  .command('check')
-  .description('Check configuration and setup')
-  .option('-c, --config <path>', 'path to configuration file')
-  .action(async (options) => {
-    try {
-      const linter = new PrismaStrongMigrationsLinter(options.config);
-      const config = linter.getConfig().getConfig();
-      
-      console.log('Configuration:');
-      console.log(`  Migrations path: ${config.migrationsPath}`);
-      console.log(`  Fail on error: ${config.failOnError}`);
-      console.log(`  Fail on warning: ${config.failOnWarning}`);
-      console.log(`  Output format: ${config.output}`);
-      
-      const enabledRules = linter.getEnabledRules();
-      console.log(`\nEnabled rules: ${enabledRules.length}`);
-      
-      for (const rule of enabledRules) {
-        console.log(`  - ${rule.id} (${rule.severity})`);
-      }
-      
-      // Check if migrations directory exists
-      const fs = await import('fs');
-      if (fs.existsSync(config.migrationsPath)) {
-        console.log(`\n✓ Migrations directory found: ${config.migrationsPath}`);
-      } else {
-        console.log(`\n✗ Migrations directory not found: ${config.migrationsPath}`);
-      }
-    } catch (error) {
-      console.error('Error checking configuration:', error instanceof Error ? error.message : error);
-      process.exit(1);
+  const overrides: Partial<UserConfig> = {};
+  if (flags.migrationsDir) overrides.migrationsDir = flags.migrationsDir;
+  if (flags.dialect) overrides.dialect = flags.dialect as UserConfig['dialect'];
+  if (flags.failOn) overrides.failOn = flags.failOn as ReportedSeverity;
+
+  try {
+    const { result, config } = lintProject({
+      configPath: flags.config,
+      overrides,
+      files: files.length > 0 ? files : undefined,
+      changedSince: flags.changed ? resolveBase(flags.base) : undefined,
+    });
+
+    console.log(getReporter(reporterName)(result));
+    return shouldFail(result, config.failOn) ? 1 : 0;
+  } catch (error) {
+    printError(error);
+    return 1;
+  }
+}
+
+function runListRules(asJson: boolean): number {
+  if (asJson) {
+    console.log(
+      JSON.stringify(
+        ALL_RULES.map((r) => ({
+          name: r.name,
+          category: r.category,
+          defaultSeverity: r.defaultSeverity,
+          enabledByDefault: r.enabledByDefault,
+          description: r.description,
+        })),
+        null,
+        2,
+      ),
+    );
+    return 0;
+  }
+
+  const width = Math.max(...ALL_RULES.map((r) => r.name.length));
+  let lastCategory = '';
+  for (const rule of ALL_RULES) {
+    if (rule.category !== lastCategory) {
+      console.log(`\n${pc.bold(rule.category)}`);
+      lastCategory = rule.category;
     }
-  });
+    const state = rule.enabledByDefault
+      ? pc.green(rule.defaultSeverity.padEnd(7))
+      : pc.dim('off    ');
+    console.log(`  ${rule.name.padEnd(width)}  ${state}  ${pc.dim(rule.description)}`);
+  }
+  return 0;
+}
+
+function runInit(force: boolean): number {
+  const name = 'prisma-strong-migrations.config.cjs';
+  const file = resolve(process.cwd(), name);
+  if (existsSync(file) && !force) {
+    console.error(pc.red(`${name} already exists. Use --force to overwrite.`));
+    return 1;
+  }
+  writeFileSync(file, starterConfig());
+  console.log(pc.green(`Created ${name}`));
+  return 0;
+}
+
+function starterConfig(): string {
+  const ruleLines = ALL_RULES.map((rule) => {
+    const value = rule.enabledByDefault ? `'${rule.defaultSeverity}'` : `'off'`;
+    return `    '${rule.name}': ${value},${rule.enabledByDefault ? '' : ' // opt-in'}`;
+  }).join('\n');
+
+  return `/** @type {import('prisma-strong-migrations').UserConfig} */
+module.exports = {
+  migrationsDir: './prisma/migrations',
+  dialect: 'postgresql',
+  // Lowest severity that fails the run: 'error' or 'warning'.
+  failOn: 'error',
+  rules: {
+${ruleLines}
+  },
+};
+`;
+}
+
+/** Choose a reporter: explicit flag, else github inside Actions, else stylish. */
+function resolveReporter(flag: string | undefined): ReporterName | null {
+  if (flag) return isReporterName(flag) ? flag : null;
+  return process.env.GITHUB_ACTIONS === 'true' ? 'github' : 'stylish';
+}
+
+/** Resolve the base ref for --changed, honoring GitHub's PR base when present. */
+function resolveBase(base: string | undefined): string {
+  if (base) return base;
+  const prBase = process.env.GITHUB_BASE_REF;
+  return prBase ? `origin/${prBase}` : 'origin/main';
+}
+
+function printError(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  const prefix = error instanceof ConfigError ? 'Configuration error' : 'Error';
+  console.error(pc.red(`${prefix}: ${message}`));
+}
 
 if (require.main === module) {
-  program.parse();
-} 
+  run(process.argv.slice(2)).then(
+    (code) => process.exit(code),
+    (error) => {
+      printError(error);
+      process.exit(1);
+    },
+  );
+}

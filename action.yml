@@ -1,0 +1,74 @@
+name: 'Prisma Strong Migrations'
+description: 'Lint Prisma migrations for unsafe SQL before it reaches production.'
+author: 'Miles Zimmerman'
+branding:
+  icon: 'database'
+  color: 'blue'
+
+inputs:
+  migrations-dir:
+    description: 'Directory containing Prisma migrations.'
+    required: false
+    default: './prisma/migrations'
+  config:
+    description: 'Path to a config file. Auto-discovered when omitted.'
+    required: false
+    default: ''
+  changed-only:
+    description: 'Only lint migrations changed in this pull request (requires fetch-depth: 0).'
+    required: false
+    default: 'false'
+  base:
+    description: 'Base git ref for changed-only. Defaults to the pull request base branch.'
+    required: false
+    default: ''
+  fail-on:
+    description: "Severity that fails the run: 'error' or 'warning'."
+    required: false
+    default: 'error'
+  reporter:
+    description: "Output format: 'github' (inline PR annotations), 'stylish', or 'json'."
+    required: false
+    default: 'github'
+  working-directory:
+    description: 'Directory to run in (where the Prisma project lives).'
+    required: false
+    default: '.'
+  node-version:
+    description: 'Node.js version used to run the linter.'
+    required: false
+    default: '22'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Build linter
+      shell: bash
+      run: |
+        cd "$GITHUB_ACTION_PATH"
+        npm ci
+        npm run build
+
+    - name: Lint migrations
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        args=(lint
+          --migrations-dir "${{ inputs.migrations-dir }}"
+          --reporter "${{ inputs.reporter }}"
+          --fail-on "${{ inputs.fail-on }}")
+        if [ -n "${{ inputs.config }}" ]; then
+          args+=(--config "${{ inputs.config }}")
+        fi
+        if [ "${{ inputs.changed-only }}" = "true" ]; then
+          args+=(--changed)
+          if [ -n "${{ inputs.base }}" ]; then
+            args+=(--base "${{ inputs.base }}")
+          fi
+        fi
+        node "$GITHUB_ACTION_PATH/dist/cli.js" "${args[@]}"
