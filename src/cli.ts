@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { writeFileSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { writeFileSync, existsSync, readFileSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 import { Command, CommanderError } from 'commander';
 import pc from 'picocolors';
 import { ConfigError, type UserConfig } from './config';
@@ -9,7 +9,17 @@ import { getReporter, isReporterName, type ReporterName } from './reporters';
 import { ALL_RULES } from './rules';
 import type { ReportedSeverity } from './types';
 
-const VERSION = '0.1.0';
+/** Read the package version from package.json so it never drifts from the build. */
+function packageVersion(): string {
+  try {
+    const pkg = readFileSync(join(__dirname, '..', 'package.json'), 'utf8');
+    return JSON.parse(pkg).version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+const VERSION = packageVersion();
 
 interface LintFlags {
   config?: string;
