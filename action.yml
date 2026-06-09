@@ -15,11 +15,11 @@ inputs:
     required: false
     default: ''
   changed-only:
-    description: 'Only lint migrations changed in this pull request (requires fetch-depth: 0).'
+    description: 'Only lint migrations changed in this event (PR base branch, or the push diff). Use fetch-depth: 0 for the most precise comparison.'
     required: false
     default: 'false'
   base:
-    description: 'Base git ref for changed-only. Defaults to the pull request base branch.'
+    description: 'Base git ref for changed-only. Defaults to the PR base branch on pull requests, or the pre-push commit on pushes.'
     required: false
     default: ''
   fail-on:
@@ -54,21 +54,40 @@ runs:
         npm ci
         npm run build
 
-    # Changed-only detection diffs against a base ref. The default checkout is
-    # shallow and may not include it, which would otherwise stop detection cold.
-    # Fetch the base (best effort) so the diff has something to compare against.
-    - name: Fetch base ref for changed-only
+    # Changed-only detection diffs against a base ref. The correct base depends
+    # on the event: a pull request compares against its base branch, while a push
+    # compares against the commit before the push. Resolve it here and make sure
+    # it is present in history (the default checkout is shallow). For the most
+    # precise results, check out with fetch-depth: 0.
+    - name: Resolve base ref for changed-only
       if: inputs.changed-only == 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        INPUT_BASE: ${{ inputs.base }}
+        PR_BASE: ${{ github.base_ref }}
+        PUSH_BEFORE: ${{ github.event.before }}
       run: |
-        base="${{ inputs.base }}"
-        if [ -z "$base" ]; then
-          if [ -n "$GITHUB_BASE_REF" ]; then base="origin/$GITHUB_BASE_REF"; else base="origin/main"; fi
+        zero="0000000000000000000000000000000000000000"
+        if [ -n "$INPUT_BASE" ]; then
+          base="$INPUT_BASE"
+          ref="${base#origin/}"
+          git fetch --no-tags --depth=1 origin "+refs/heads/${ref}:refs/remotes/origin/${ref}" 2>/dev/null || true
+        elif [ -n "$PR_BASE" ]; then
+          # Pull request: compare against the PR's base branch.
+          base="origin/$PR_BASE"
+          git fetch --no-tags --depth=1 origin "+refs/heads/${PR_BASE}:refs/remotes/origin/${PR_BASE}" 2>/dev/null || true
+        elif [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "$zero" ]; then
+          # Push: compare against the commit that was there before the push.
+          base="$PUSH_BEFORE"
+          git fetch --no-tags --depth=1 origin "$PUSH_BEFORE" 2>/dev/null || true
+        else
+          # Fallback (e.g. first push to a new branch): compare against main.
+          base="origin/main"
+          git fetch --no-tags --depth=1 origin "+refs/heads/main:refs/remotes/origin/main" 2>/dev/null || true
         fi
-        branch="${base#origin/}"
-        echo "Ensuring base ref '$base' is available for changed-file detection."
-        git fetch --no-tags --depth=1 origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" 2>/dev/null || true
+        echo "Comparing changed migrations against: $base"
+        echo "PSM_BASE=$base" >> "$GITHUB_ENV"
 
     - name: Lint migrations
       shell: bash
@@ -82,9 +101,6 @@ runs:
           args+=(--config "${{ inputs.config }}")
         fi
         if [ "${{ inputs.changed-only }}" = "true" ]; then
-          args+=(--changed)
-          if [ -n "${{ inputs.base }}" ]; then
-            args+=(--base "${{ inputs.base }}")
-          fi
+          args+=(--changed --base "$PSM_BASE")
         fi
         node "$GITHUB_ACTION_PATH/dist/cli.js" "${args[@]}"

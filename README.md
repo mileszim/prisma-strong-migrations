@@ -60,8 +60,8 @@ jobs:
 | Input | Default | Description |
 | --- | --- | --- |
 | `migrations-dir` | `./prisma/migrations` | Where your migrations live. |
-| `changed-only` | `false` | Only lint migrations added/modified in this PR (needs `fetch-depth: 0`). |
-| `base` | PR base branch | Git ref to diff against for `changed-only`. |
+| `changed-only` | `false` | Only lint migrations changed in this event. On a PR it diffs the base branch; on a push it diffs the pre-push commit. Use `fetch-depth: 0` for the most precise comparison. |
+| `base` | auto | Git ref to diff against for `changed-only`. Defaults to the PR base branch (PRs) or the pre-push commit (pushes). |
 | `fail-on` | `error` | Severity that fails the check: `error` or `warning`. |
 | `reporter` | `github` | `github` (inline annotations), `stylish`, or `json`. |
 | `config` | _auto_ | Path to a config file. |
