@@ -15,11 +15,11 @@ inputs:
     required: false
     default: ''
   changed-only:
-    description: 'Only lint migrations changed in this event (PR base branch, or the push diff). Use fetch-depth: 0 for the most precise comparison.'
+    description: 'Only lint migrations this branch changed versus its base (the whole diff, like a PR — not just the latest commit). The action deepens shallow checkouts automatically.'
     required: false
     default: 'false'
   base:
-    description: 'Base git ref for changed-only. Defaults to the PR base branch on pull requests, or the pre-push commit on pushes.'
+    description: 'Branch to compare against for changed-only. Defaults to the PR base branch (pull requests) or the repository default branch (pushes).'
     required: false
     default: ''
   fail-on:
@@ -54,39 +54,40 @@ runs:
         npm ci
         npm run build
 
-    # Changed-only detection diffs against a base ref. The correct base depends
-    # on the event: a pull request compares against its base branch, while a push
-    # compares against the commit before the push. Resolve it here and make sure
-    # it is present in history (the default checkout is shallow). For the most
-    # precise results, check out with fetch-depth: 0.
+    # Changed-only detection compares the whole branch against the branch it
+    # diverged from — the same set of changes a pull request shows, not just the
+    # latest commit. That comparison needs a common ancestor (merge base), but the
+    # default CI checkout is shallow and has none. So: pick the target branch (the
+    # PR base, an explicit base, or the repo default), then deepen history and
+    # fetch that branch so the merge base exists.
     - name: Resolve base ref for changed-only
       if: inputs.changed-only == 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
         INPUT_BASE: ${{ inputs.base }}
-        PR_BASE: ${{ github.base_ref }}
-        PUSH_BEFORE: ${{ github.event.before }}
       run: |
-        zero="0000000000000000000000000000000000000000"
-        if [ -n "$INPUT_BASE" ]; then
-          base="$INPUT_BASE"
-          ref="${base#origin/}"
-          git fetch --no-tags --depth=1 origin "+refs/heads/${ref}:refs/remotes/origin/${ref}" 2>/dev/null || true
-        elif [ -n "$PR_BASE" ]; then
-          # Pull request: compare against the PR's base branch.
-          base="origin/$PR_BASE"
-          git fetch --no-tags --depth=1 origin "+refs/heads/${PR_BASE}:refs/remotes/origin/${PR_BASE}" 2>/dev/null || true
-        elif [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "$zero" ]; then
-          # Push: compare against the commit that was there before the push.
-          base="$PUSH_BEFORE"
-          git fetch --no-tags --depth=1 origin "$PUSH_BEFORE" 2>/dev/null || true
-        else
-          # Fallback (e.g. first push to a new branch): compare against main.
-          base="origin/main"
-          git fetch --no-tags --depth=1 origin "+refs/heads/main:refs/remotes/origin/main" 2>/dev/null || true
+        # Target branch: explicit input, else the PR base branch, else the
+        # repository's default branch (queried from the remote), else "main".
+        target="${INPUT_BASE#origin/}"
+        if [ -z "$target" ] && [ -n "$GITHUB_BASE_REF" ]; then target="$GITHUB_BASE_REF"; fi
+        if [ -z "$target" ]; then
+          target="$(git ls-remote --symref origin HEAD 2>/dev/null | sed -n 's#^ref: refs/heads/\(.*\)[[:space:]]HEAD$#\1#p')"
         fi
+        if [ -z "$target" ]; then target="main"; fi
+
+        # A shallow checkout hides the common ancestor, making "what did this branch
+        # change" impossible to compute. Deepen history, then fetch the target
+        # branch in full so a real merge base is available.
+        if [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
+          git fetch --no-tags --unshallow origin 2>/dev/null \
+            || git fetch --no-tags --deepen=2147483647 origin 2>/dev/null || true
+        fi
+        git fetch --no-tags origin "+refs/heads/${target}:refs/remotes/origin/${target}" 2>/dev/null || true
+
+        base="origin/${target}"
         echo "Comparing changed migrations against: $base"
+        echo "Merge base with HEAD: $(git merge-base "$base" HEAD 2>/dev/null || echo '(none — comparing branch tips)')"
         echo "PSM_BASE=$base" >> "$GITHUB_ENV"
 
     - name: Lint migrations
