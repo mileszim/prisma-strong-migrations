@@ -139,8 +139,19 @@ export interface Diagnostic {
   column: number;
 }
 
+/** A diagnostic that was silenced by an inline `psm-` suppression directive. */
+export interface SuppressedDiagnostic extends Diagnostic {
+  /** Reason given on the suppressing comment, if one was provided. */
+  reason?: string;
+}
+
 export interface LintResult {
   diagnostics: Diagnostic[];
+  /**
+   * Findings that fired but were silenced by an inline suppression comment.
+   * Surfaced (not hidden) so suppressions stay auditable.
+   */
+  suppressed: SuppressedDiagnostic[];
   /** Number of migration files inspected. */
   filesChecked: number;
   errorCount: number;

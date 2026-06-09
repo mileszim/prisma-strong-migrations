@@ -1,17 +1,25 @@
 import type { ResolvedConfig } from './config';
 import { LineMap } from './parser';
 import { ALL_RULES } from './rules';
-import type { Diagnostic, Migration, ReportedSeverity, Rule, RuleContext } from './types';
+import { applySuppressions, parseSuppressions } from './suppressions';
+import type { Diagnostic, Migration, ReportedSeverity, Rule, RuleContext, SuppressedDiagnostic } from './types';
 
-/** Run every active rule against one migration. */
-export function lintMigration(migration: Migration, config: ResolvedConfig): Diagnostic[] {
-  const diagnostics: Diagnostic[] = [];
+export interface MigrationAnalysis {
+  /** Findings that were not silenced by an inline directive. */
+  diagnostics: Diagnostic[];
+  /** Findings an inline `psm-` directive silenced. */
+  suppressed: SuppressedDiagnostic[];
+}
+
+/** Run every active rule against one migration, then apply inline suppressions. */
+export function analyzeMigration(migration: Migration, config: ResolvedConfig): MigrationAnalysis {
+  const raw: Diagnostic[] = [];
   const lineMap = new LineMap(migration.sql);
   const locate = (offset: number) => lineMap.locate(offset);
 
   // Surface anything the parser couldn't read rather than silently ignoring it.
   for (const parseError of migration.parseErrors) {
-    diagnostics.push({
+    raw.push({
       rule: 'parse-error',
       category: 'correctness',
       severity: 'warning',
@@ -28,10 +36,18 @@ export function lintMigration(migration: Migration, config: ResolvedConfig): Dia
     const severity = config.ruleSeverity.get(rule.name);
     if (!severity || severity === 'off') continue;
     if (rule.dialects && !rule.dialects.includes(config.dialect)) continue;
-    runRule(rule, severity, migration, config, locate, diagnostics);
+    runRule(rule, severity, migration, config, locate, raw);
   }
 
-  return sortDiagnostics(diagnostics);
+  const suppressions = parseSuppressions(migration.sql);
+  const totalLines = migration.sql.split('\n').length;
+  const { kept, suppressed } = applySuppressions(raw, suppressions, migration.statements, totalLines);
+  return { diagnostics: sortDiagnostics(kept), suppressed: sortDiagnostics(suppressed) };
+}
+
+/** Run every active rule against one migration and return the kept diagnostics. */
+export function lintMigration(migration: Migration, config: ResolvedConfig): Diagnostic[] {
+  return analyzeMigration(migration, config).diagnostics;
 }
 
 function runRule(
@@ -92,7 +108,7 @@ function resolveLocation(
   return { line: finding.statement.line, column: finding.statement.column };
 }
 
-function sortDiagnostics(diagnostics: Diagnostic[]): Diagnostic[] {
+function sortDiagnostics<T extends Diagnostic>(diagnostics: T[]): T[] {
   return diagnostics.sort(
     (a, b) =>
       a.file.localeCompare(b.file) ||

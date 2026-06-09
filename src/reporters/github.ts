@@ -8,10 +8,12 @@ import type { Diagnostic, LintResult } from '../types';
 export function github(result: LintResult): string {
   const lines = result.diagnostics.map(annotation);
   lines.push('');
+  const suffix = result.suppressed.length ? ` ${result.suppressed.length} finding(s) suppressed.` : '';
   lines.push(
-    result.diagnostics.length === 0
+    (result.diagnostics.length === 0
       ? `No migration safety issues found (${result.filesChecked} files checked).`
-      : `${result.errorCount} error(s), ${result.warningCount} warning(s) across ${result.filesChecked} file(s).`,
+      : `${result.errorCount} error(s), ${result.warningCount} warning(s) across ${result.filesChecked} file(s).`) +
+      suffix,
   );
   return lines.join('\n');
 }

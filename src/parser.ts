@@ -174,6 +174,69 @@ export function splitStatements(sql: string): Chunk[] {
   return chunks;
 }
 
+/** A comment found in the SQL, with the 1-based line it begins on. */
+export interface SqlComment {
+  /** Comment body, without the surrounding line- or block-comment markers. */
+  text: string;
+  line: number;
+}
+
+/**
+ * Extract every line (`--`) and block comment from the SQL, with line numbers.
+ *
+ * Uses the same scanner as {@link splitStatements} so that string literals,
+ * quoted identifiers and dollar-quoted bodies are skipped — text that merely
+ * looks like a comment inside a string is never reported as one. This is what
+ * suppression directives are read from.
+ */
+export function scanComments(sql: string): SqlComment[] {
+  const comments: SqlComment[] = [];
+  let i = 0;
+  let line = 1;
+  const advance = (to: number) => {
+    for (let j = i; j < to; j++) if (sql[j] === '\n') line++;
+    i = to;
+  };
+
+  while (i < sql.length) {
+    const ch = sql[i]!;
+    const next = sql[i + 1];
+
+    if (ch === '\n') {
+      line++;
+      i++;
+      continue;
+    }
+    if (ch === '-' && next === '-') {
+      const end = indexOrEnd(sql, '\n', i + 2);
+      comments.push({ text: sql.slice(i + 2, end), line });
+      i = end;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      const close = sql.indexOf('*/', i + 2);
+      const bodyEnd = close === -1 ? sql.length : close;
+      comments.push({ text: sql.slice(i + 2, bodyEnd), line });
+      advance(close === -1 ? sql.length : close + 2);
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      advance(skipQuoted(sql, i, ch));
+      continue;
+    }
+    if (ch === '$') {
+      const tag = dollarTag(sql, i);
+      if (tag) {
+        const close = sql.indexOf(tag, i + tag.length);
+        advance(close === -1 ? sql.length : close + tag.length);
+        continue;
+      }
+    }
+    i++;
+  }
+  return comments;
+}
+
 function indexOrEnd(sql: string, needle: string, from: number): number {
   const idx = sql.indexOf(needle, from);
   return idx === -1 ? sql.length : idx;
