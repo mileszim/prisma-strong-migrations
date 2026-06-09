@@ -54,6 +54,22 @@ runs:
         npm ci
         npm run build
 
+    # Changed-only detection diffs against a base ref. The default checkout is
+    # shallow and may not include it, which would otherwise stop detection cold.
+    # Fetch the base (best effort) so the diff has something to compare against.
+    - name: Fetch base ref for changed-only
+      if: inputs.changed-only == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        base="${{ inputs.base }}"
+        if [ -z "$base" ]; then
+          if [ -n "$GITHUB_BASE_REF" ]; then base="origin/$GITHUB_BASE_REF"; else base="origin/main"; fi
+        fi
+        branch="${base#origin/}"
+        echo "Ensuring base ref '$base' is available for changed-file detection."
+        git fetch --no-tags --depth=1 origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" 2>/dev/null || true
+
     - name: Lint migrations
       shell: bash
       working-directory: ${{ inputs.working-directory }}

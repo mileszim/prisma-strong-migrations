@@ -99,15 +99,22 @@ async function runLint(files: string[], flags: LintFlags): Promise<number> {
   if (flags.dialect) overrides.dialect = flags.dialect as UserConfig['dialect'];
   if (flags.failOn) overrides.failOn = flags.failOn as ReportedSeverity;
 
+  const base = flags.changed ? resolveBase(flags.base) : undefined;
+
   try {
     const { result, config } = lintProject({
       configPath: flags.config,
       overrides,
       files: files.length > 0 ? files : undefined,
-      changedSince: flags.changed ? resolveBase(flags.base) : undefined,
+      changedSince: base,
     });
 
     console.log(getReporter(reporterName)(result));
+    // In changed-only mode, an empty set is legitimate but easy to mistake for a
+    // broken setup. Say so explicitly (on stderr, to keep json output clean).
+    if (base && result.filesChecked === 0) {
+      console.error(pc.dim(`No changed migration files found versus ${base}; nothing to lint.`));
+    }
     return shouldFail(result, config.failOn) ? 1 : 0;
   } catch (error) {
     printError(error);
