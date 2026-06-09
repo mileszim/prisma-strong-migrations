@@ -133,6 +133,40 @@ module.exports = {
 Each rule can be set to `'error'`, `'warning'`, `'off'`, `true` (its default
 severity), `false` (off), or `{ severity, enabled }`.
 
+## Suppressing a finding
+
+Sometimes a flagged statement really is safe — you've shipped the code that stops
+using a column before dropping it, for example. Silence a finding with an inline
+SQL comment in the `migration.sql` file, right where the statement is:
+
+```sql
+-- psm-disable-next-line no-drop-table -- removed all readers of this table in #482
+DROP TABLE "legacy_sessions";
+```
+
+The directive applies to the statement on the **next line** (it covers the whole
+statement, even if it spans multiple lines). Forms:
+
+| Directive | Scope |
+| --- | --- |
+| `-- psm-disable-next-line [rules] [-- reason]` | the statement below the comment |
+| `-- psm-disable-line [rules] [-- reason]` | the statement on the same line (trailing comment) |
+| `-- psm-disable-file [rules] [-- reason]` | every statement in the file |
+| `-- psm-disable [rules]` … `-- psm-enable [rules]` | every statement between the two comments |
+
+- **`rules`** is an optional space/comma-separated list of rule names (e.g.
+  `no-drop-table, no-set-not-null`). Omit it to suppress **all** rules for that
+  scope — prefer naming the rule so a _different_ problem on the same statement
+  still gets caught.
+- **`reason`** is optional free text after ` -- ` or `:`. It's strongly
+  encouraged: it documents _why_ the statement is safe for the next reader.
+- `psm-ignore` and `psm-ignore-file` are accepted as aliases for the next-line
+  and file forms. Block comments (`/* psm-disable-next-line */`) work too.
+
+Suppressions are never hidden: every reporter notes how many findings were
+suppressed, and the `json` reporter lists them (with reasons) under a
+`suppressed` key — so they stay auditable in review and can't quietly rot.
+
 ## Rules
 
 Run `prisma-strong-migrations list-rules` for the live list. Rules marked

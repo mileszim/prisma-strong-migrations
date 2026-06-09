@@ -4,7 +4,8 @@ import type { Diagnostic, LintResult } from '../types';
 /** ESLint-style human-readable output, grouped by file. */
 export function stylish(result: LintResult): string {
   if (result.diagnostics.length === 0) {
-    return pc.green(`✔ No migration safety issues found (${fileCount(result.filesChecked)} checked).`);
+    const clean = pc.green(`✔ No migration safety issues found (${fileCount(result.filesChecked)} checked).`);
+    return result.suppressed.length ? `${clean}${suppressedNote(result.suppressed.length)}` : clean;
   }
 
   const lines: string[] = [];
@@ -34,7 +35,12 @@ function summary(result: LintResult): string {
       : null,
   ].filter(Boolean);
   const mark = result.errorCount > 0 ? pc.red('✖') : pc.yellow('⚠');
-  return `${mark} ${total} ${plural(total, 'problem')} (${parts.join(', ')})`;
+  const line = `${mark} ${total} ${plural(total, 'problem')} (${parts.join(', ')})`;
+  return result.suppressed.length ? `${line}${suppressedNote(result.suppressed.length)}` : line;
+}
+
+function suppressedNote(count: number): string {
+  return pc.dim(`  ·  ${count} ${plural(count, 'finding')} suppressed`);
 }
 
 function groupByFile(diagnostics: Diagnostic[]): Map<string, Diagnostic[]> {

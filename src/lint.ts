@@ -1,21 +1,25 @@
 import { loadConfig, type ResolvedConfig, type UserConfig } from './config';
-import { lintMigration } from './engine';
+import { analyzeMigration } from './engine';
 import { changedMigrationFiles, isGitRepository } from './git';
 import { loadMigration, loadMigrations } from './migration';
-import type { Diagnostic, LintResult, Migration, ReportedSeverity } from './types';
+import type { Diagnostic, LintResult, Migration, ReportedSeverity, SuppressedDiagnostic } from './types';
 
 /** Run all active rules against a set of already-loaded migrations. */
 export function lint(migrations: Migration[], config: ResolvedConfig): LintResult {
   const diagnostics: Diagnostic[] = [];
+  const suppressed: SuppressedDiagnostic[] = [];
   let parseErrorCount = 0;
 
   for (const migration of migrations) {
     parseErrorCount += migration.parseErrors.length;
-    diagnostics.push(...lintMigration(migration, config));
+    const analysis = analyzeMigration(migration, config);
+    diagnostics.push(...analysis.diagnostics);
+    suppressed.push(...analysis.suppressed);
   }
 
   return {
     diagnostics,
+    suppressed,
     filesChecked: migrations.length,
     errorCount: diagnostics.filter((d) => d.severity === 'error').length,
     warningCount: diagnostics.filter((d) => d.severity === 'warning').length,
